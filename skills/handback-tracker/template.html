@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="capabilities" content='{"db":{}}'>
+<title>@@TITLE@@</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f6f7; --surface: #fff; --fg: #1a2228; --muted: #52626e;
+  --line: #cbd5dc; --accent: #236684; --code-bg: #e9eff2; --selected: #d8ebf3;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #11171b; --surface: #182026; --fg: #e2e8eb; --muted: #a3b2bb;
+    --line: #41515d; --accent: #8fc6df; --code-bg: #0d1316; --selected: #244455;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #11171b; --surface: #182026; --fg: #e2e8eb; --muted: #a3b2bb;
+  --line: #41515d; --accent: #8fc6df; --code-bg: #0d1316; --selected: #244455;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif; }
+main { max-width: 880px; margin: auto; padding: 28px 16px 56px; overflow-wrap: anywhere; }
+h1, h2 { line-height: 1.2; }
+h1 { font-size: clamp(1.8rem, 6vw, 2.6rem); margin: 0 0 16px; }
+h2 { font-size: 1.3rem; margin: 0 0 16px; }
+section { margin-top: 32px; }
+p { margin: 12px 0; white-space: pre-wrap; }
+.updated, #db-status, .pick { color: var(--muted); font-size: .9rem; }
+.now { border-left: 4px solid var(--accent); padding: 12px 16px; background: var(--surface); }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; margin: 12px 0; }
+summary { padding: 16px; cursor: pointer; font-weight: 650; }
+.step-body { padding: 0 16px 16px; }
+.command { background: var(--code-bg); border-radius: 6px; padding: 12px; min-width: 0; }
+pre { max-width: 100%; overflow: auto; white-space: pre; font: .85rem/1.6 ui-monospace, monospace; margin-bottom: 0; }
+button { font: inherit; color: var(--accent); background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 8px 12px; cursor: pointer; }
+button:disabled { opacity: .65; cursor: default; }
+button[aria-pressed="true"] { background: var(--selected); border-color: var(--accent); }
+button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.options { display: flex; flex-wrap: wrap; gap: 8px; }
+.tick { display: block; margin-top: 16px; }
+input { accent-color: var(--accent); }
+textarea { display: block; width: 100%; min-height: 96px; background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 5px; font: inherit; padding: 10px; margin: 8px 0; }
+.reply, .note { border-left: 2px solid var(--line); padding-left: 12px; }
+table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+td, th { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--line); }
+ul, ol { padding-left: 24px; }
+#done-steps { list-style: none; padding: 0; }
+.finished { padding: 8px 0; }
+#done-steps .step { border: 0; border-bottom: 1px solid var(--line); background: transparent; }
+#done-steps summary { font-weight: 400; padding: 8px 0; }
+</style>
+</head>
+<body>
+<main>
+<header><h1>@@TITLE@@</h1><p>@@GOAL@@</p><p class="now"><strong>Now:</strong> @@NOW@@</p><p class="updated">Updated: @@UPDATED@@</p></header>
+<p id="db-status" role="status">Page responses are unavailable here. Reply in chat with the step number.</p>
+<section><h2>Your turn</h2><div id="open-steps">@@OPEN@@</div><p id="empty-open" hidden>No open steps.</p></section>
+<section><h2>After that</h2><ol>@@AFTER@@</ol></section>
+@@SESSIONS@@
+<section><h2>Done so far</h2><div id="done-steps">@@DONE@@</div></section>
+<section><h2>Side notes</h2><ul>@@SIDE_NOTES@@</ul></section>
+</main>
+<script>
+"use strict";
+const openSteps = document.getElementById("open-steps");
+const doneSteps = document.getElementById("done-steps");
+const statusLine = document.getElementById("db-status");
+const cards = Array.from(document.querySelectorAll("details.step"));
+const pending = new Set();
+let readOnly = false;
+
+function place(card, done) {
+  const target = done ? doneSteps : openSteps;
+  if (card.parentNode !== target) {
+    const next = Array.from(target.children).find(el => Number(el.dataset.num) > Number(card.dataset.num));
+    target.insertBefore(card, next || (done ? Array.from(target.children).find(el => !el.dataset.num) : null));
+    card.open = !done;
+  }
+  card.querySelector(".ran").hidden = !done;
+  document.getElementById("empty-open").hidden = openSteps.children.length !== 0;
+}
+document.getElementById("empty-open").hidden = openSteps.children.length !== 0;
+
+document.querySelectorAll(".copy").forEach(button => {
+  button.addEventListener("click", async () => {
+    const text = button.parentNode.querySelector("pre").textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = "Copied";
+    } catch (error) {
+      button.textContent = "Select and copy the command";
+      const range = document.createRange();
+      range.selectNodeContents(button.parentNode.querySelector("pre"));
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  });
+});
+
+function disableResponses(message) {
+  readOnly = true;
+  document.querySelectorAll(".tick input, [data-option], form textarea, form button").forEach(el => { el.disabled = true; });
+  statusLine.textContent = message;
+}
+
+function rows(snapshot) {
+  const result = new Map();
+  snapshot.docs.forEach(doc => { if (doc.exists) result.set(doc.id, doc.data()); });
+  return result;
+}
+
+function errorCode(error) {
+  const code = error && error.code;
+  if (code === "transform_error") return "invalid_argument";
+  return ["invalid_argument", "resource_exhausted", "quota_exceeded", "unavailable", "revoked",
+    "not_granted", "capability_disabled", "capability_removed"].includes(code) ? code : "unavailable";
+}
+
+(async function () {
+  let db;
+  try { db = window.claude && window.claude.use ? await window.claude.use("db") : null; }
+  catch (error) { return; }
+  if (!db) return;
+  const readyStatus = "Ticks record that you ran a command. Its output still needs checking.";
+  statusLine.textContent = readyStatus;
+  document.querySelectorAll(".tick").forEach(el => { el.hidden = false; });
+  document.querySelectorAll(".tick input, [data-option], form textarea, form button").forEach(el => { el.disabled = false; });
+
+  async function write(ref, data, controls) {
+    if (readOnly || pending.has(ref.path)) return false;
+    pending.add(ref.path);
+    controls.forEach(el => { el.disabled = true; });
+    try {
+      try { await ref.set(data); }
+      catch (error) {
+        if (errorCode(error) !== "unavailable") throw error;
+        await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 200));
+        await ref.set(data);
+      }
+      if (!readOnly) statusLine.textContent = readyStatus;
+      return true;
+    } catch (error) {
+      const code = errorCode(error);
+      if (["invalid_argument", "revoked", "not_granted", "capability_disabled", "capability_removed"].includes(code)) {
+        disableResponses("Page responses are read-only here. Reply in chat with the step number.");
+      } else {
+        statusLine.textContent = code === "quota_exceeded" ? "Page storage is full. Reply in chat." :
+          "Your response was not saved. Try again or reply in chat.";
+      }
+      return false;
+    } finally {
+      pending.delete(ref.path);
+      if (!readOnly) controls.forEach(el => { el.disabled = false; });
+    }
+  }
+
+  const listeners = [];
+  const failed = () => disableResponses("Page responses are unavailable. Reply in chat with the step number.");
+  listeners.push(db.collection("ticks").onSnapshot(snapshot => {
+    const ticks = rows(snapshot);
+    cards.forEach(card => {
+      const box = card.querySelector(".tick input");
+      if (!box || pending.has("ticks/" + card.dataset.step)) return;
+      const tick = ticks.get(card.dataset.step);
+      box.checked = !!(tick && tick.done === true && tick.cmd === box.dataset.cmd);
+      place(card, box.checked);
+    });
+  }, failed));
+
+  function showPick(card, option) {
+    const buttons = Array.from(card.querySelectorAll("[data-option]"));
+    buttons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.option === option)));
+    const selected = buttons.find(button => button.dataset.option === option);
+    card.querySelector(".pick").textContent = selected ? "Picked: " + selected.textContent : "No option picked.";
+  }
+  listeners.push(db.collection("picks").onSnapshot(snapshot => {
+    const picks = rows(snapshot);
+    cards.filter(card => card.querySelector("[data-option]")).forEach(card => {
+      if (!pending.has("picks/" + card.dataset.step)) showPick(card, (picks.get(card.dataset.step) || {}).option);
+    });
+  }, failed));
+
+  listeners.push(db.collection("notes").onSnapshot(snapshot => {
+    cards.filter(card => card.querySelector(".notes")).forEach(card => {
+      const notesBox = card.querySelector(".notes");
+      notesBox.replaceChildren();
+      Array.from(rows(snapshot)).sort((a, b) => (a[1].at || "").localeCompare(b[1].at || "")).forEach(([id, note]) => {
+        if (note.step !== card.dataset.step) return;
+        const reply = Array.from(card.querySelectorAll(".reply")).find(el => el.dataset.note === id);
+        if (reply) {
+          const text = reply.querySelector(".viewer-note");
+          text.querySelector(".note-text").textContent = note.text;
+          text.hidden = false;
+        } else {
+          const text = document.createElement("p");
+          text.className = "note";
+          text.textContent = note.text;
+          notesBox.append(text);
+        }
+      });
+    });
+  }, failed));
+  window.addEventListener("pagehide", event => {
+    if (!event.persisted) listeners.forEach(unsubscribe => unsubscribe());
+  });
+
+  cards.forEach(card => {
+    const sid = card.dataset.step;
+    const box = card.querySelector(".tick input");
+    if (box) box.addEventListener("change", async () => {
+      const done = box.checked;
+      const saved = await write(db.collection("ticks").doc(sid),
+        {done, at: new Date().toISOString(), cmd: box.dataset.cmd}, [box]);
+      box.checked = saved ? done : !done;
+      place(card, box.checked);
+    });
+    const buttons = Array.from(card.querySelectorAll("[data-option]"));
+    buttons.forEach(button => button.addEventListener("click", async () => {
+      if (button.getAttribute("aria-pressed") === "true") return;
+      if (await write(db.collection("picks").doc(sid),
+        {option: button.dataset.option, at: new Date().toISOString()}, buttons)) showPick(card, button.dataset.option);
+    }));
+    const form = card.querySelector("form");
+    if (form) form.querySelector("button").addEventListener("click", async () => {
+      const input = form.querySelector("textarea");
+      const text = input.value.trim();
+      if (!text) {
+        input.focus();
+        statusLine.textContent = "Write a note or question before sending.";
+        return;
+      }
+      const controls = Array.from(form.querySelectorAll("textarea, button"));
+      if (await write(db.collection("notes").doc(), {step: sid, text, at: new Date().toISOString()}, controls)) input.value = "";
+    });
+  });
+})();
+</script>
+</body>
+</html>
