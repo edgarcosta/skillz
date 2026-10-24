@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit Changes"
+  short_description: "High-signal review of proposed code changes"
+  default_prompt: "Use $audit-changes to audit the proposed change in this worktree."

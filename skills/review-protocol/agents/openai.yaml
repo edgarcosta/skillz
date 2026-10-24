@@ -1,0 +1,7 @@
+interface:
+  display_name: "Review Protocol"
+  short_description: "Shared lane brief for audit-changes and harden-plan"
+  default_prompt: "Not invoked directly; audit-changes and harden-plan read it."
+
+policy:
+  allow_implicit_invocation: false

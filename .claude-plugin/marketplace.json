@@ -1,0 +1,13 @@
+{
+  "name": "skillz",
+  "owner": {
+    "name": "Edgar Costa"
+  },
+  "plugins": [
+    {
+      "name": "skillz",
+      "description": "Skills for auditing code changes, hardening plans, convening a jury of models, and writing for people",
+      "source": "./"
+    }
+  ]
+}

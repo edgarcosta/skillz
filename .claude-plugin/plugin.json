@@ -1,0 +1,11 @@
+{
+  "name": "skillz",
+  "description": "Skills for auditing code changes, hardening plans, convening a jury of models, and writing for people",
+  "author": {
+    "name": "Edgar Costa"
+  },
+  "homepage": "https://github.com/edgarcosta/skillz",
+  "repository": "https://github.com/edgarcosta/skillz",
+  "license": "MIT",
+  "keywords": ["skills", "code-review", "planning", "writing"]
+}

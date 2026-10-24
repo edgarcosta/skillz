@@ -1,0 +1,1 @@
+Inspect the introduced behaviour, its callers and callees, the invariants it relies on, repository history when it helps, and any reachable security consequence. Also check the behavioural rules listed below, which the compliance lanes could not settle by reading: whether a regression test fails on the base, whether an algorithm meets its stated contract, and the like.
