@@ -101,7 +101,8 @@ its responses itself; reading `tee` logs may go to a worker.
    ```
 
    Act on this report of current ticks, decision picks and unanswered notes. A tick confirms
-   the current command was run; read its `tee` log to judge success before marking it done.
+   the current command was run. Judge success from its `tee` log, or the live remote state
+   for push or PR steps, before marking it done.
    Read both before asking the user anything; they never need to paste output.
    Command failures and surprises belong in chat.
    To ask for a re-run of an unchanged command, delete its `ticks` document with ArtifactData:

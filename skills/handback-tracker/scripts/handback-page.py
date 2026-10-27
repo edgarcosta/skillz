@@ -23,6 +23,7 @@ def load(path):
 
 
 def command_hash(command):
+    # Hash the exact text, whitespace included: any edit to a command must void its earlier tick.
     return hashlib.sha256(command.encode("utf-8")).hexdigest()
 
 
