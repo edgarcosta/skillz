@@ -47,6 +47,8 @@ Check every reply for the sentinel line. A reply without it was truncated: repor
 
 ## Relay and record
 
+Send cards with multiple decisions through handback-tracker's jury converter, which needs labels unused on that tracker and every PICK and REASON pair before any argument, with one step per label and the question and full replies in the appendix.
+
 Report the decision as a card the user can rule from alone, in this order:
 
 1. **Heading**: the decision in one line. When one message walks through several decisions, number them: "Decision 5 of 12: ...".

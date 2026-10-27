@@ -16,8 +16,10 @@ Keep the source JSON and generated files in the worktree's scratch directory, su
 and `DBDIR` with absolute paths there. The script lives beside this skill under `scripts/`;
 the commands write this skill's directory as `<this directory>`.
 
-Use the writing-for-humans skill for page prose. For each command, Where names the machine
-and shell. Why explains its effect and whether it changes anything. Success says what proves
+Use the writing-for-humans skill for all authored prose in either tracker form, including jury cards;
+keep quoted juror lines and source text verbatim.
+For each command, Where names the machine and shell. Why explains its effect and whether it changes
+anything. Success says what proves
 it worked and who checks. Follow the Handbacks rules in your global instructions for runnable
 commands and readable `tee` logs. Keep secret values off the hosted page.
 
@@ -29,14 +31,31 @@ The JSON fields are:
   `status` (`open` or `done`), `title`.
 - Open command: `where`, `why`, `success`, `command`; optional `time` when over a minute.
   Finished command: `result`.
-- Open decision: `recommendation` first, with the alternative in one sentence;
+- Open decision: `recommendation`, with the alternative in one sentence;
   `options` as objects with `id` and `label`; `replies` maps note ids to your answers.
+  Optional `context` explains the choice without chat context.
   Optional `notes` maps the same ids to the user's note text for Markdown quotations.
   Finished decision: `answer`. Queue later decisions in `after` with owner `You`.
+- Optional decision `jury`: nonempty `lines` of juror objects and optional `agreement`,
+  one authored line with its count. Each juror has nonempty `juror` and `model` display strings;
+  juror names are unique within a decision. Optional `pick` and `reason` keep complete PICK and
+  REASON source lines.
+  Labelled prefixes name the decision's id; bare prefixes belong to that decision.
+  Converter diagnostics use optional `status`; render rejects roster-only lines.
+  Backing is derived from complete evidence pairs and the decision's current options.
+  Options added from proposals carry `proposed: true`; proposer names are derived too.
+- Optional `appendix`: objects with nonempty `title` and source `text`, shown after Side notes.
+  HTML keeps each source in a closed disclosure; Markdown uses text fences.
+- Optional `groups`: objects with nonempty `title` and nonempty `steps` lists of step ids.
+  Members are adjacent in numeric order, including done steps, and occur in only one group.
+  Only groups with open members have headings; other open runs read Other steps.
 - `after`: objects with `num`, `owner` (`You`, `Me`, `You, maybe`), `title`, and optional
   `id` to preserve the number on promotion to a step. Commands wait until their inputs exist.
 - `sessions`: objects with `session`, `owns`, `state`; shown when there is more than one.
   `done` and `side_notes`: text lists.
+
+Ordinary decisions put the recommendation first; jury decisions put Mine after the juror lines,
+with one decision step per label.
 
 Run these for the command contract and argument help:
 
@@ -44,10 +63,49 @@ Run these for the command contract and argument help:
 python3 -B <this directory>/scripts/handback-page.py --help
 python3 -B <this directory>/scripts/handback-page.py render --help
 python3 -B <this directory>/scripts/handback-page.py read --help
+python3 -B <this directory>/scripts/handback-page.py jury --help
 ```
 
 Each command exits **0** on success, including help. Exit **2** means invalid arguments,
 invalid state, or input/output failure. On 2, correct the reported problem before publishing.
+
+### Convert jury replies
+
+Before dispatching the jury, label each question with a decision id not yet used on the tracker,
+such as F5, or R2F1 for a second round, and ask jurors to open with every labelled PICK and REASON pair before any argument.
+Add jury decisions to the state only when every reply or failure file is ready, then convert at once.
+Author each decision's title, context, recommendation, options, and stable number from the question file.
+Each jury decision to convert (a target) needs at least one authored option.
+For a label answered only by `none` or `new:`, author an option with id `none`.
+Each target's `jury.lines` supplies the same juror/model roster, with no `pick`, `reason` or `status` yet.
+Check the authored fields against the exact question sent to the panel before conversion.
+
+```bash
+python3 -B <this directory>/scripts/handback-page.py jury CARD.json \
+  --question QUESTION.txt --sentinel END-OF-JURY-REPLY \
+  --reply amber=/absolute/path/reply-a.txt --reply blue=/absolute/path/reply-b.txt -o STATE.json
+```
+
+Supply every roster juror exactly once through `--reply juror=/absolute/path/reply.txt`
+or `--failed juror=/absolute/path/failure.txt`.
+A failure file starts with `no reply, exit <integer>`, followed by the command and last error line.
+The converter copies it as a diagnostic; it runs no command.
+Reply filenames carry no meaning. Labels in `PICK F5:` and `REASON F5:` name decision ids directly.
+Only the opening block of PICK, REASON, and blank lines supplies evidence; argument text stays quoted.
+Labels and prefixes are case sensitive. The last nonblank reply line must match the chosen sentinel.
+Missing lines, truncation, and unmatched picks remain visible, with no inferred vote.
+Complete `new:` proposals reuse an identical option label or receive the first unused letter from A to Z.
+
+Conversion preserves other steps and existing appendix sources, then embeds the question and full replies.
+Exit 0 means the draft was written, including incomplete replies; exit 2 leaves an existing output unchanged.
+A redo starts from the roster-only scaffold; an already converted state has no targets.
+To add a run, copy the tracker state to a new `CARD.json`, add the roster-only decisions there,
+and pass the tracker state path to `-o`; a redo reuses that `CARD.json`.
+Conversion leaves page responses and number reservations to the usual read and render commands.
+
+After conversion, read the replies, then write each decision's `agreement` and revise its
+`recommendation` in the output state before rendering. Omit agreement unless every replying juror makes that point.
+When the diagnostic names a reply, leave the reply unchanged and show the user the diagnostic with that reply.
 
 ## Publish and read back
 
@@ -139,5 +197,5 @@ python3 -B <this directory>/scripts/handback-page.py render --md STATE.json -o P
 In place of step 3, record the absolute Markdown and state paths once, when first written, with
 `bd update BEAD --append-notes "Handback: ABSOLUTE_MD_PATH; state: ABSOLUTE_STATE_PATH"`.
 Without `.beads/`, give the user both paths in the reply. Link the Markdown file by its absolute
-path. Chat replaces step 4: the user replies with the command step number or their decision, note
-or question. Read command logs, update state and render again at every state change.
+path. Chat replaces step 4: the user replies with the step number and, for a decision, their
+choice, note or question. Read command logs, update state and render again at every state change.

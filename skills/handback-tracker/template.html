@@ -39,6 +39,7 @@ summary { padding: 16px; cursor: pointer; font-weight: 650; }
 .step-body { padding: 0 16px 16px; }
 .command { background: var(--code-bg); border-radius: 6px; padding: 12px; min-width: 0; }
 pre { max-width: 100%; overflow: auto; white-space: pre; font: .85rem/1.6 ui-monospace, monospace; margin-bottom: 0; }
+.jury-line pre, .appendix pre { white-space: pre-wrap; }
 button { font: inherit; color: var(--accent); background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 8px 12px; cursor: pointer; }
 button:disabled { opacity: .65; cursor: default; }
 button[aria-pressed="true"] { background: var(--selected); border-color: var(--accent); }
@@ -66,6 +67,7 @@ ul, ol { padding-left: 24px; }
 @@SESSIONS@@
 <section><h2>Done so far</h2><div id="done-steps">@@DONE@@</div></section>
 <section><h2>Side notes</h2><ul>@@SIDE_NOTES@@</ul></section>
+@@APPENDIX@@
 </main>
 <script>
 "use strict";
@@ -84,9 +86,9 @@ function place(card, done) {
     card.open = !done;
   }
   card.querySelector(".ran").hidden = !done;
-  document.getElementById("empty-open").hidden = openSteps.children.length !== 0;
+  document.getElementById("empty-open").hidden = openSteps.querySelectorAll("details.step").length !== 0;
 }
-document.getElementById("empty-open").hidden = openSteps.children.length !== 0;
+document.getElementById("empty-open").hidden = openSteps.querySelectorAll("details.step").length !== 0;
 
 document.querySelectorAll(".copy").forEach(button => {
   button.addEventListener("click", async () => {
