@@ -35,15 +35,23 @@ The JSON fields are:
   `options` as objects with `id` and `label`; `replies` maps note ids to your answers.
   Optional `context` explains the choice without chat context.
   Optional `notes` maps the same ids to the user's note text for Markdown quotations.
+  Optional `question` keeps the exact source text on the card, after Context and before Options.
+  Optional `ruling` records the decision taken; `built` is a list describing what used it, with complete URLs.
+  Both appear before the response controls. A provisional ruling leaves the user's choice unselected.
   Finished decision: `answer`. Queue later decisions in `after` with owner `You`.
 - Optional decision `jury`: nonempty `lines` of juror objects and optional `agreement`,
   one authored line with its count. Each juror has nonempty `juror` and `model` display strings;
   juror names are unique within a decision. Optional `pick` and `reason` keep complete PICK and
   REASON source lines.
-  Labelled prefixes name the decision's id; bare prefixes belong to that decision.
+  Optional `label` is the source label. A string requires matching labelled prefixes;
+  null permits bare prefixes for one conversion target. Each run requires distinct source labels.
+  An absent `label` uses the decision's id; render also accepts bare prefixes
+  on such a decision, as older states have them.
   Converter diagnostics use optional `status`; render rejects roster-only lines.
   Backing is derived from complete evidence pairs and the decision's current options.
   Options added from proposals carry `proposed: true`; proposer names are derived too.
+  Conversion writes derived `support` entries with `juror`, resolved `option` or null,
+  `conditional` and `outcome`, using the same interpretation as rendering.
 - Optional `appendix`: objects with nonempty `title` and source `text`, shown after Side notes.
   HTML keeps each source in a closed disclosure; Markdown uses text fences.
 - Optional `groups`: objects with nonempty `title` and nonempty `steps` lists of step ids.
@@ -71,8 +79,10 @@ invalid state, or input/output failure. On 2, correct the reported problem befor
 
 ### Convert jury replies
 
-Before dispatching the jury, label each question with a decision id not yet used on the tracker,
-such as F5, or R2F1 for a second round, and ask jurors to open with every labelled PICK and REASON pair before any argument.
+Before dispatching the jury, give each labelled question a source label such as F5.
+Ask jurors to open with every PICK and REASON pair, labelled unless the question is bare, before any argument.
+Set `jury.label` when the page id differs from the source label, or to null for a bare single question;
+separate runs may reuse a source label with distinct page ids.
 Add jury decisions to the state only when every reply or failure file is ready, then convert at once.
 Author each decision's title, context, recommendation, options, and stable number from the question file.
 Each jury decision to convert (a target) needs at least one authored option.
@@ -90,13 +100,14 @@ Supply every roster juror exactly once through `--reply juror=/absolute/path/rep
 or `--failed juror=/absolute/path/failure.txt`.
 A failure file starts with `no reply, exit <integer>`, followed by the command and last error line.
 The converter copies it as a diagnostic; it runs no command.
-Reply filenames carry no meaning. Labels in `PICK F5:` and `REASON F5:` name decision ids directly.
+Reply filenames carry no meaning. Labels in `PICK F5:` and `REASON F5:` name source labels.
 Only the opening block of PICK, REASON, and blank lines supplies evidence; argument text stays quoted.
 Labels and prefixes are case sensitive. The last nonblank reply line must match the chosen sentinel.
 Missing lines, truncation, and unmatched picks remain visible, with no inferred vote.
 Complete `new:` proposals reuse an identical option label or receive the first unused letter from A to Z.
 
-Conversion preserves other steps and existing appendix sources, then embeds the question and full replies.
+Conversion preserves other steps and existing appendix sources, puts the exact question on every target card,
+and appends the full replies to the appendix. Source-labelled appendix titles name the decisions and their source labels.
 Exit 0 means the draft was written, including incomplete replies; exit 2 leaves an existing output unchanged.
 A redo starts from the roster-only scaffold; an already converted state has no targets.
 To add a run, copy the tracker state to a new `CARD.json`, add the roster-only decisions there,

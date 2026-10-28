@@ -64,7 +64,7 @@ def prose(value, path="state"):
             elif key == "appendix" and isinstance(item, list):
                 for source in item:
                     prose(source["title"], path + ".appendix.title")
-            elif key not in ("command", "notes") and not (key == "label" and value.get("proposed") is True):
+            elif key not in ("command", "notes", "question") and not (key == "label" and value.get("proposed") is True):
                 prose(item, path + "." + key)
 
 
@@ -74,6 +74,14 @@ def source_value(line, prefix, label=None):
     if match:
         return match[1], match[2].strip()
     return source_value(line, prefix) if label is not None else None
+
+
+def jury_label(step):
+    return step["jury"].get("label", step["id"])
+
+
+def doc_id(value):
+    return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_~:@+.-]{1,200}", value) is not None and value not in (".", "..")
 
 
 def validate(state, render=False):
@@ -93,7 +101,7 @@ def validate(state, render=False):
             raise Usage("step must be an object")
         if item.get("id") is not None:
             sid = item["id"]
-            if not isinstance(sid, str) or not re.fullmatch(r"[A-Za-z0-9_~:@+.-]{1,200}", sid) or sid in (".", ".."):
+            if not doc_id(sid):
                 raise Usage("step id must be a db document id")
             if sid in ids:
                 raise Usage("duplicate step id: " + sid)
@@ -124,6 +132,12 @@ def validate(state, render=False):
             continue
         if "context" in step and not isinstance(step["context"], str):
             raise Usage("decision context must be text: " + sid)
+        for field in ("question", "ruling"):
+            if field in step and not isinstance(step[field], str):
+                raise Usage("decision %s must be text: %s" % (field, sid))
+        if "built" in step and (not isinstance(step["built"], list) or
+                               any(not isinstance(text, str) for text in step["built"])):
+            raise Usage("decision built must be a list of text: " + sid)
         if step["status"] == "open":
             if not isinstance(step.get("recommendation"), str) or not step["recommendation"].strip() or not step.get("options"):
                 raise Usage("open decision needs a recommendation and options: " + sid)
@@ -143,6 +157,9 @@ def validate(state, render=False):
             jury = step["jury"]
             if not isinstance(jury, dict) or not isinstance(jury.get("lines"), list) or not jury["lines"]:
                 raise Usage("jury lines must be a nonempty list: " + sid)
+            label = jury_label(step)
+            if label is not None and not doc_id(label):
+                raise Usage("jury label must be a source label or null: " + sid)
             if "agreement" in jury and (not isinstance(jury["agreement"], str) or len(jury["agreement"].splitlines()) > 1):
                 raise Usage("jury agreement must be one line: " + sid)
             jurors = set()
@@ -158,10 +175,10 @@ def validate(state, render=False):
                 for field in ("pick", "reason"):
                     if field not in row:
                         continue
-                    parsed = source_value(row[field], field.upper(), sid) if isinstance(row[field], str) else None
+                    parsed = source_value(row[field], field.upper(), label) if isinstance(row[field], str) else None
                     if parsed is None:
                         raise Usage("invalid %s source line for %s: %s" % (field, row["juror"], sid))
-                    if step["status"] == "open" and parsed[0] is not None and parsed[0] != sid:
+                    if step["status"] == "open" and parsed[0] != label and (parsed[0] is not None or "label" in jury):
                         raise Usage("cross-labelled %s for %s: %s" % (field, row["juror"], sid))
                 if "status" in row:
                     status = row["status"]
@@ -225,16 +242,17 @@ def ordered_steps(state, status):
 
 def jury_rows(step):
     rows = []
+    label = jury_label(step)
     for row in sorted(step["jury"]["lines"], key=lambda row: row["juror"]):
         option, conditional, outcome = None, False, ""
         if "status" in row:
             outcome = "no reply" if row["status"].startswith("no reply, exit ") else row["status"]
         elif "pick" not in row:
             outcome = "no pick line" + ("; no reason line" if "reason" not in row else "")
-        elif "reason" not in row or not source_value(row["reason"], "REASON", step["id"])[1]:
+        elif "reason" not in row or not source_value(row["reason"], "REASON", label)[1]:
             outcome = "no reason line"
         else:
-            pick = source_value(row["pick"], "PICK", step["id"])[1]
+            pick = source_value(row["pick"], "PICK", label)[1]
             authored = [candidate for candidate in step["options"] if not candidate.get("proposed")]
             exact = next((candidate for candidate in authored if candidate["id"] == pick), None)
             if exact is not None:
@@ -378,6 +396,8 @@ def step_html(step):
         body += '<label class="tick" hidden><input type="checkbox" disabled data-cmd="%s"> I ran this</label>' % command_hash(step["command"])
     else:
         body = '<p>%s</p>' % esc(step["context"]) if step.get("context") else ""
+        if "question" in step:
+            body += '<details class="appendix"><summary>Question sent to the jury</summary><pre>\n%s</pre></details>' % esc(step["question"])
         if "jury" in step:
             body += jury_html(step)
         else:
@@ -385,6 +405,11 @@ def step_html(step):
             body += '<div class="options">' + "".join(
                 '<button type="button" disabled data-option="%s" aria-pressed="false">%s</button>' % (esc(o["id"]), esc(o["label"]))
                 for o in step["options"]) + '</div>'
+        if step.get("ruling"):
+            body += '<p><strong>Ruling:</strong> %s</p>' % esc(step["ruling"])
+        if step.get("built"):
+            body += '<p><strong>Built:</strong></p><ul>' + ''.join('<li>%s</li>' % esc(text)
+                    for text in step["built"]) + '</ul>'
         body += '<p class="pick" aria-live="polite">No option picked.</p>'
         body += '<div class="notes"></div>' + replies_html(step)
         body += '<form><label>Note or question<textarea disabled></textarea></label><button disabled type="button">Send note</button></form>'
@@ -444,11 +469,21 @@ def render_md(state):
         else:
             if step.get("context"):
                 lines += [md_text(step["context"]), ""]
+            if "question" in step:
+                lines += ["Question sent to the jury:", ""] + fenced(step["question"])
             if "jury" in step:
                 lines += jury_md(step)
             else:
                 lines += ["Recommendation: " + md_text(step["recommendation"]), ""]
                 lines += ["- %s: %s" % (md_text(o["id"]), md_text(o["label"])) for o in step["options"]]
+            if step.get("ruling"):
+                if lines[-1] != "":
+                    lines += [""]
+                lines += ["Ruling: " + md_text(step["ruling"]), ""]
+            if step.get("built"):
+                if lines[-1] != "":
+                    lines += [""]
+                lines += ["Built:", ""] + ["- " + md_text(text) for text in step["built"]]
             lines += ["", "Reply in chat with the step number and your choice, note or question.", ""]
             for nid, answer in step.get("replies", {}).items():
                 if nid in step.get("notes", {}):
@@ -518,7 +553,7 @@ def read_responses(state, db):
             if step["status"] == "done":
                 lines.append("%d. %s: answer %s" % (step["num"], sid, step["answer"].replace("\n", "\n    ")))
             else:
-                pick = picks.get(sid, {}).get("option")
+                pick = picks.get(sid, {}).get("option") or None
                 current = any(option["id"] == pick for option in step.get("options", []))
                 answer = str(pick) if current else "none"
                 if pick is not None and not current:
@@ -560,8 +595,15 @@ def convert_jury(state, args):
         raise Usage("missing reply or failure file for juror: " + ", ".join(missing))
     if not args.sentinel.strip() or len(args.sentinel.splitlines()) != 1:
         raise Usage("sentinel must be one nonblank line")
-    labels = {step["id"] for step in targets}
-    label_pattern = "|".join(re.escape(sid) for sid in sorted(labels, key=lambda sid: (-len(sid), sid)))
+    labels = [jury_label(step) for step in targets]
+    if None in labels and len(targets) != 1:
+        raise Usage("bare prefixes require a single target decision")
+    if len(set(labels)) != len(labels):
+        label = next(label for label in labels if labels.count(label) > 1)
+        ids = ", ".join(step["id"] for step in targets if jury_label(step) == label)
+        raise Usage("duplicate source label %s in target decisions: %s" % (label, ids))
+    label_pattern = "|".join([re.escape(label) for label in sorted(
+        (label for label in labels if label is not None), key=lambda label: (-len(label), label))] + [r"[^\s]+?"])
     evidence = {}
     for juror in sorted(roster):
         field, path, text = sources[juror]
@@ -581,14 +623,14 @@ def convert_jury(state, args):
         for line in lines[:end]:
             if not line.strip():
                 continue
-            match = re.fullmatch(r"[ \t]*(PICK|REASON)(?: (" + label_pattern + r"|[^\s]+?))?:([^\r\n]*)", line)
+            match = re.fullmatch(r"[ \t]*(PICK|REASON)(?: (" + label_pattern + r"))?:([^\r\n]*)", line)
             if match is None:
                 break
             prefix, sid = match[1], match[2]
-            if sid is None:
-                raise Usage("unlabelled %s from juror %s in %s; use an explicit decision id" % (prefix, juror, path))
+            if sid is None and None not in labels:
+                raise Usage("unlabelled %s from juror %s in %s; set jury.label to null for one bare target" % (prefix, juror, path))
             if sid not in labels:
-                if any(step["id"] == sid for step in state["steps"]):
+                if any("jury" in step and jury_label(step) == sid for step in state["steps"]):
                     raise Usage("label %s from juror %s in %s names a decision that is not a roster-only target" %
                                 (sid, juror, path))
                 raise Usage("unknown target label %s from juror %s in %s" % (sid, juror, path))
@@ -600,12 +642,13 @@ def convert_jury(state, args):
                            for sid, fields in extracted.items()}
     for step in targets:
         sid = step["id"]
-        step["jury"]["lines"] = [dict(juror=juror, model=roster[juror], **evidence[juror][sid])
+        label = jury_label(step)
+        step["jury"]["lines"] = [dict(juror=juror, model=roster[juror], **evidence[juror][label])
                                   for juror in sorted(roster)]
         for row in step["jury"]["lines"]:
-            if "pick" not in row or "reason" not in row or not source_value(row["reason"], "REASON", sid)[1]:
+            if "pick" not in row or "reason" not in row or not source_value(row["reason"], "REASON", label)[1]:
                 continue
-            pick = source_value(row["pick"], "PICK", sid)[1]
+            pick = source_value(row["pick"], "PICK", label)[1]
             proposal = pick[4:].strip() if pick.startswith("new:") else ""
             if not proposal or any(option["label"] == proposal for option in step["options"]):
                 continue
@@ -614,11 +657,23 @@ def convert_jury(state, args):
             if oid is None:
                 raise Usage("no unused option letter for %s from juror %s" % (sid, row["juror"]))
             step["options"].append({"id": oid, "label": proposal, "proposed": True})
-    label_range = targets[0]["id"]
+        step["jury"]["support"] = [dict(juror=row["juror"], option=option, conditional=conditional, outcome=outcome)
+                                   for row, option, conditional, outcome in jury_rows(step)]
+    named = any("label" in step["jury"] for step in targets)
+
+    def caption(step):
+        if not named:
+            return step["id"]
+        label = jury_label(step)
+        return "%s (%s)" % (step["title"], "single question" if label is None else label)
+
+    label_range = caption(targets[0])
     if len(targets) > 1:
-        label_range += " to " + targets[-1]["id"]
+        label_range += " to " + caption(targets[-1])
+    question = read_source(args.question)
+    for step in targets:
+        step["question"] = question
     appendix = state.setdefault("appendix", [])
-    appendix.append({"title": "Question for " + label_range, "text": read_source(args.question)})
     for juror in sorted(roster):
         if sources[juror][0] == "reply":
             appendix.append({"title": "Reply from %s (%s) for %s" % (juror, roster[juror], label_range),
@@ -656,9 +711,10 @@ def main():
     read = subs.add_parser("read", help="report done commands, current ticks, decision picks and unanswered notes")
     read.add_argument("state")
     read.add_argument("dbdir", metavar="DBDIR")
-    jury = subs.add_parser("jury", help="convert labelled jury replies into a draft state", description=(
+    jury = subs.add_parser("jury", help="convert jury replies into a draft state", description=(
         'Populate roster-only decisions from the opening PICK/REASON block. '
-        'Embed the exact question and full replies; render the draft separately.'))
+        'Use jury.label for source labels, or null for one bare question. '
+        'Put the exact question on each card and full replies in the appendix; render separately.'))
     jury.add_argument("state", metavar="CARD.json")
     jury.add_argument("--question", required=True, metavar="QUESTION.txt")
     jury.add_argument("--sentinel", required=True, help="required last nonblank line of a complete reply")

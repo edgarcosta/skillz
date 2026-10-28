@@ -226,9 +226,9 @@ function errorCode(error) {
     });
     const buttons = Array.from(card.querySelectorAll("[data-option]"));
     buttons.forEach(button => button.addEventListener("click", async () => {
-      if (button.getAttribute("aria-pressed") === "true") return;
+      const option = button.getAttribute("aria-pressed") === "true" ? "" : button.dataset.option;
       if (await write(db.collection("picks").doc(sid),
-        {option: button.dataset.option, at: new Date().toISOString()}, buttons)) showPick(card, button.dataset.option);
+        {option, at: new Date().toISOString()}, buttons)) showPick(card, option);
     }));
     const form = card.querySelector("form");
     if (form) form.querySelector("button").addEventListener("click", async () => {
