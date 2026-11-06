@@ -9,6 +9,16 @@ A handback is something the user must do because the session cannot: a command o
 an action behind their credentials, or a decision. This skill covers both tracker forms: a
 page and a Markdown file.
 
+Keep one page per conversation: handbacks, jury cards and plan summaries share its source state.
+For document feedback, put each contested point on that page as a decision card, through `jury` when delegated.
+The session revises the working document; never ask the user to edit or comment on the document.
+A deliverable requested as a page is linked from the session's page; working files remain linked evidence.
+Keep the usual inline handback exemptions, but a provisional jury ruling always goes on the session's page.
+
+A request to review earlier rulings starts a fresh collection through `jury` and its own `Decision review:` pointer.
+Inside a conversation that already owns a page, this review is the one second page; keep the task's `Handback:` pointer.
+Each page retains its own source state and responses, and resumes from its own pointer.
+
 ## State and commands
 
 Keep the source JSON and generated files in the worktree's scratch directory, such as
@@ -34,11 +44,14 @@ The JSON fields are:
 - Open decision: `recommendation`, with the alternative in one sentence;
   `options` as objects with `id` and `label`; `replies` maps note ids to your answers.
   Optional `context` explains the choice without chat context.
-  Optional `notes` maps the same ids to the user's note text for Markdown quotations.
+  Optional `notes` maps the same ids to the user's note text for quotations in both formats.
   Optional `question` keeps the exact source text on the card, after Context and before Options.
   Optional `ruling` records the decision taken; `built` is a list describing what used it, with complete URLs.
   Both appear before the response controls. A provisional ruling leaves the user's choice unselected.
-  Finished decision: `answer`. Queue later decisions in `after` with owner `You`.
+  Finished decision: `answer`. A settled jury card keeps its full evidence, ruling, built work,
+  quoted notes and replies in a closed read-only disclosure. Later feedback goes through chat.
+  Jury decisions keep nonempty `options` at every status; `recommendation` is optional when settled.
+  Queue later decisions in `after` with owner `You`.
 - Optional decision `jury`: nonempty `lines` of juror objects and optional `agreement`,
   one authored line with its count. Each juror has nonempty `juror` and `model` display strings;
   juror names are unique within a decision. Optional `pick` and `reason` keep complete PICK and
@@ -112,6 +125,13 @@ Exit 0 means the draft was written, including incomplete replies; exit 2 leaves 
 A redo starts from the roster-only scaffold; an already converted state has no targets.
 To add a run, copy the tracker state to a new `CARD.json`, add the roster-only decisions there,
 and pass the tracker state path to `-o`; a redo reuses that `CARD.json`.
+Add each run when it is ruled. Copy the decision objects from the jury record's scaffold,
+which jury's binding locates, into `CARD.json`,
+setting ids to `BEAD~LABEL` and `jury.label` to the source label.
+Assign the next unused numbers, respecting the sidecar's reservations, and copy `ruling` from
+the record's `Provisional X (at): text` line. Mirror later ruling and built edits to the same cards.
+Held cards keep their `RUN~LABEL` ids after approval. Keep the recorded bead id at the end of
+the ruling line on every later mirror; use that bead for the current-record check.
 Conversion leaves page responses and number reservations to the usual read and render commands.
 
 After conversion, read the replies, then write each decision's `agreement` and revise its
@@ -120,8 +140,9 @@ When the diagnostic names a reply, leave the reply unchanged and show the user t
 
 ## Publish and read back
 
-The session that owns the tracker, page or Markdown form, renders, publishes and reads back
-its responses itself; reading `tee` logs may go to a worker.
+The session owning the tracker renders, publishes and reads its responses on check/done or resumption.
+This applies to both forms; reading `tee` logs may go to a worker.
+The page's guidance asks the user to say `check` in its owning conversation; there is no background reader.
 
 1. When the repo has `.beads/`, read the bead with `bd show BEAD`.
    Reuse its recorded tracker and state file. With the Artifact tool, read an existing
@@ -147,7 +168,9 @@ its responses itself; reading `tee` logs may go to a worker.
    never merge the HTML.
    After the first publish, save its URL in state and record the URL and absolute state path
    once on the bead with `bd update BEAD --append-notes "Handback: URL; state: ABSOLUTE_PATH"`.
-   In a repo without `.beads/`, give the user the URL and absolute state path in the reply.
+   For a review page, use `Decision review:` and preserve the task's `Handback:` pointer.
+   With no goal, give `Handback: URL; state: ABSOLUTE_PATH` for a task or
+   `Decision review: URL; state: ABSOLUTE_PATH` for a review in chat.
    Hand the user the page link and the one next action.
 4. Read responses when the user sends a word in chat, such as "check", "done" or "answered",
    and before every republish. **Never watch or poll the page.** Use ArtifactData action
@@ -187,12 +210,20 @@ its responses itself; reading `tee` logs may go to a worker.
    ```json
    {"action":"write_db","db_op":"delete","url":"URL","collection":"ticks","doc_id":"STEP_ID","if_version":VERSION}
    ```
-5. Answer a decision note through `replies[note-id]`, leaving the decision open until the user
-   picks an option or confirms your reading of their note. Record a settled answer and mark
-   the step done. Republish the same artifact at every state change: a step finished, a new
+5. Copy each answered note from `read` into `notes[id]` and answer through `replies[id]`.
+   Leave a decision open until the user picks an option or confirms your reading of their note.
+   Follow `jury` for current-record checks, recording and correction approval.
+   Settle with `answer` such as "Confirmed A" or "Overturned A; now B" and mark the card done.
+   Put a correction-scope question in a new open decision step on the same page, naming the overturned card.
+   Record a correction proposal and its destination before returning it to the task conversation.
+   The resumed task reads the current decision record and notes before continuing.
+   An open provisional card is optional review: work may finish while it awaits a response.
+   Republish the same artifact at every state change: a step finished, a new
    step ready, a decision answered, or a session idle. Update `now` and `updated` each time;
    repeat the response check and render steps. At completion, `now` reads
-   "Done, nothing left for you"; keep side notes.
+   "Done, nothing left for you" when no response remains; with provisional cards open, use
+   "Work done; 1 ruling open for optional review" for one, or
+   "Work done; N rulings open for optional review" otherwise. Keep side notes.
 
 ## Without the Artifact tool
 
@@ -207,6 +238,7 @@ python3 -B <this directory>/scripts/handback-page.py render --md STATE.json -o P
 
 In place of step 3, record the absolute Markdown and state paths once, when first written, with
 `bd update BEAD --append-notes "Handback: ABSOLUTE_MD_PATH; state: ABSOLUTE_STATE_PATH"`.
-Without `.beads/`, give the user both paths in the reply. Link the Markdown file by its absolute
-path. Chat replaces step 4: the user replies with the step number and, for a decision, their
+For a review, use `Decision review:` and preserve the task's `Handback:` pointer.
+With no goal, give both absolute paths in chat under the task or review label above.
+Link the Markdown file by its absolute path. Chat replaces step 4: the user replies with the step number and, for a decision, their
 choice, note or question. Read command logs, update state and render again at every state change.

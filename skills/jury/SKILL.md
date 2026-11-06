@@ -1,11 +1,11 @@
 ---
 name: jury
-description: Use when a decision has more than one defensible answer and one model's judgement is not enough: "ask the jury", "get a second opinion from several models", a design choice between two workable options, or a skill that reaches a question it cannot settle on its own. Convenes independent blind jurors on one self-contained question and reports them as a decision card for the user to rule on.
+description: Use when a decision has more than one defensible answer and one model's judgement is not enough: "ask the jury", "get a second opinion from several models", a design choice between two workable options, or a skill that reaches a question it cannot settle on its own, or to review rulings taken earlier. Convenes independent blind jurors on one self-contained question.
 ---
 
 # Jury
 
-A jury is several models answering one question independently, none of them seeing another's answer. It is for a decision where more than one answer is defensible and one model's blind spot would be expensive. The user rules. You write the question and cast no vote.
+A jury is several models answering one question independently, none of them seeing another's answer. It is for a decision where more than one answer is defensible and one model's blind spot would be expensive. You write the question and cast no vote. Delegated authority follows the rules below; advisory use leaves the ruling with the user.
 
 ## When to convene one
 
@@ -65,13 +65,25 @@ Run `verify` immediately before dispatching the panel on those exact question by
 
 Every juror gets the same file. Dispatch them in parallel, each in its own process.
 
-Check every reply for the sentinel line. A reply without it was truncated: report it as truncated rather than reading the fragment as an opinion. A juror whose command fails is reported to the user with the command and its output, and is never rerouted to another account or model, because swapping a juror changes the panel the user is about to rule on.
+Check every reply for the sentinel line. A reply without it was truncated: report it as truncated rather than reading the fragment as an opinion. A juror whose command fails is reported to the user with the command and its output, and is never rerouted to another account or model, because swapping a juror changes the panel the ruling rests on.
+
+## Authority and provisional rulings
+
+An instruction to let the jury decide grants authority for the stated decision or workflow.
+A calling skill's standing grant also delegates authority.
+Report-only use and "I will rule" keep the ruling with the user.
+Independent approval boundaries still apply, including memory-review's explicit accept/apply step.
+
+With delegated authority, an option picked by more than half of the replying jurors is the provisional ruling.
+Otherwise, choose the most-picked option cheapest to undo and record why.
+Count a conditional pick only after checking its condition; with no eligible pick, report the blocker.
+The session applies the panel result without casting a vote: record it before acting, then proceed.
 
 ## Relay and record
 
 Send cards with multiple decisions through handback-tracker's jury converter, with one step per source label. Keep source labels unchanged and use distinct tracker step ids when combining runs. Put every PICK and REASON pair before any argument.
 
-Report the decision as a card the user can rule from alone, in this order:
+Report each decision as a self-contained card for ruling or later review, in this order:
 
 1. **Heading**: the decision in one line. When one message walks through several decisions, number them: "Decision 5 of 12: ...".
 2. **Context**: one paragraph a reader with no memory of the session can follow: what the thing is, what changed, and which constraint forces the choice. Take it from the question file, define every name on first use, and cite pull requests and issues by number.
@@ -81,6 +93,33 @@ Report the decision as a card the user can rule from alone, in this order:
 6. **Mine**: optionally your own recommendation, last, as "Mine (no vote): ...".
 7. **Full replies**: the complete replies in an appendix or disclosure. Keep the run directory as the working copy.
 
-The juror lines are the jurors' own words, so the user rules on what the jurors said rather than on your reading of it. A missing PICK line stays missing: a pick inferred from the body is your reading. A question file with several labels gets one Options and Jury block per label.
+The juror lines preserve the evidence for the ruling and its later review. A missing PICK line stays missing: a pick inferred from the body is your reading. A question file with several labels gets one Options and Jury block per label.
 
-Record the question, the card, the full replies pasted in, and the ruling wherever that decision is tracked, as soon as the user rules. Paste rather than link, because a worktree file is gone when the record is read somewhere else.
+With delegated authority and a beads store, record one decision bead per jury run under the goal, or a root decision bead with no goal.
+Before acting, save the exact question, options, card, full replies, neutrality evidence and provisional ruling through [local.md](local.md)'s first-record recipe.
+Paste sources into the record: a worktree file may be gone when the decision is read elsewhere.
+Attach affected work dependencies when they exist; otherwise record the owning task, worktree/branch and correction destination in notes and built descriptions.
+Initially state that no work has used the ruling; update built work and complete links as it uses it.
+Close the decision after its structured record or size-exit fallback is saved, retaining any review label.
+The record command owns the review-label predicate: only a matching neutrality pass and unanimous unconditional support from replying jurors on every unreviewed card exempt the run.
+The commissioning session owns later updates; jury workers have no later turn.
+
+In advisory use, record the question, card, full replies and the user's ruling wherever the decision is tracked once the user rules.
+
+Add ruled cards to the session's page through `handback-tracker`; use its add-a-run recipe and response-reading rules.
+For requests to review earlier rulings, read [local.md](local.md)'s collection and page-pointer recipes, then publish through `handback-tracker`.
+Without a project beads store, follow local.md's initialization approval and held-run recovery recipe; rulings remain on the page meanwhile.
+Without local.md, save the same sources and ruling wherever the decision is tracked before acting, and keep the card on the session's page.
+
+## Feedback and correction approval
+
+Before acting on a page pick, read the decision's current record if one exists.
+If another page recorded a different human ruling, ask on the page before applying it.
+Record a confirmation or replacement human ruling through the stored-source form, preserving the provisional ruling, then settle the card on the receiving page.
+Answer notes on that page; record changed rulings or added constraints in the human ruling's `text` field or decision notes.
+
+An overturn pauses affected work. Show what used the ruling with complete links, and ask for correction scope before changing it.
+Put that scope question on the session's page as `handback-tracker` describes.
+Keep closed work closed pending approval; merged work receives new work on a new branch/PR.
+Bead-orchestration owns its graph-specific reopen, dependent inspection and approved correction-child procedure.
+Settling a ruling does not establish that corrections are complete.

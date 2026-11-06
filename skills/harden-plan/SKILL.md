@@ -33,3 +33,12 @@ When the CLI log carries the sub-orchestrator's final report, or the native agen
 - the per-round trace and the ledger summary;
 - where the before-copy, the run directory and its `ledger.tsv` are;
 - non-convergence, stated plainly with the residual findings, whenever a round cap was hit. Never present a capped run as success.
+
+After the sub-orchestrator returns, prepare jury questions from its reported contested choices and obtain jury's framing checks before dispatching panels, whether or not the user delegated the ruling; jury's authority rule decides who rules.
+Follow `jury`'s authority and recording rules; apply the resulting rulings with `review-run write <run-dir> <doc>` (the revised document on stdin).
+`write` checks the hash recorded by the sub-orchestrator's last copy or write; exit 3 means an external edit: stop without overwriting it and report it.
+Keep the original round caps and convergence report; the sub-orchestrator's one-shot run is finished.
+A fresh harden-plan run afterwards is optional and requires the user's choice.
+
+Put the plan summary and decision cards on the session's page through `handback-tracker`, which owns document feedback and page pointers.
+The session revises the plan from that feedback with `review-run write` as well, so the recorded hash stays current.

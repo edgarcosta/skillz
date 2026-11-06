@@ -138,6 +138,8 @@ def validate(state, render=False):
         if "built" in step and (not isinstance(step["built"], list) or
                                any(not isinstance(text, str) for text in step["built"])):
             raise Usage("decision built must be a list of text: " + sid)
+        if "jury" in step and not step.get("options"):
+            raise Usage("jury decision needs options: " + sid)
         if step["status"] == "open":
             if not isinstance(step.get("recommendation"), str) or not step["recommendation"].strip() or not step.get("options"):
                 raise Usage("open decision needs a recommendation and options: " + sid)
@@ -289,17 +291,36 @@ def no_backing(rows, text):
     return "No option backed: " + "; ".join(outcomes) if outcomes else ""
 
 
+def majority_caption(rows):
+    replying = sum(outcome != "no reply" for row, oid, conditional, outcome in rows)
+    counts = {}
+    for row, oid, conditional, outcome in rows:
+        if oid is not None and not conditional:
+            counts[oid] = counts.get(oid, 0) + 1
+    for oid, count in counts.items():
+        if count > replying / 2:
+            return "Majority: %s, %d of %d replying" % (oid, count, replying)
+    return ""
+
+
+RULING_GUIDANCE = ("Pick the ruled option to confirm, another option to replace it, or send a note; "
+                   "then say check in the conversation that owns this page.")
+
+
 def jury_html(step):
     rows = jury_rows(step)
     body = '<div class="options">'
     for option in step["options"]:
         caption = backing_text(option, rows, esc, lambda line: '<code>%s</code>' % esc(line))
-        body += '<div><button type="button" disabled data-option="%s" aria-pressed="false">%s: %s</button>' % (
-            esc(option["id"]), esc(option["id"]), esc(option["label"]))
+        label = "%s: %s" % (esc(option["id"]), esc(option["label"]))
+        body += '<div>' + (label if step["status"] == "done" else
+            '<button type="button" disabled data-option="%s" aria-pressed="false">%s</button>' % (esc(option["id"]), label))
         if caption:
             body += '<span class="backing"> %s</span>' % caption
         body += '</div>'
     body += '</div>'
+    if majority_caption(rows):
+        body += '<p>%s</p>' % esc(majority_caption(rows))
     if no_backing(rows, esc):
         body += '<p>%s</p>' % no_backing(rows, esc)
     body += '<h4>Juror advice</h4>'
@@ -313,7 +334,9 @@ def jury_html(step):
         body += '</div>'
     if step["jury"].get("agreement"):
         body += '<p><strong>Agreement:</strong> %s</p>' % esc(step["jury"]["agreement"])
-    return body + '<p><strong>Mine (no vote):</strong> %s</p>' % esc(step["recommendation"])
+    if "recommendation" in step:
+        body += '<p><strong>Mine (no vote):</strong> %s</p>' % esc(step["recommendation"])
+    return body
 
 
 def open_entries(state):
@@ -356,6 +379,8 @@ def jury_md(step):
         caption = backing_text(option, rows, md_text, md_code)
         lines.append("- %s: %s%s" % (md_text(option["id"]), md_text(option["label"]), "; " + caption if caption else ""))
     lines += [""]
+    if majority_caption(rows):
+        lines += [md_text(majority_caption(rows)), ""]
     if no_backing(rows, md_text):
         lines += [no_backing(rows, md_text), ""]
     lines += ["**Juror advice**", ""]
@@ -368,25 +393,32 @@ def jury_md(step):
             lines += [md_text(outcome), ""]
     if step["jury"].get("agreement"):
         lines += ["Agreement: " + md_text(step["jury"]["agreement"]), ""]
-    return lines + ["Mine (no vote): " + md_text(step["recommendation"]), ""]
+    if "recommendation" in step:
+        lines += ["Mine (no vote): " + md_text(step["recommendation"]), ""]
+    return lines
 
 
 def replies_html(step):
-    return "".join('<div class="reply" data-note="%s"><div class="viewer-note" hidden>'
-                   '<p>Your note:</p><p class="note-text"></p></div>'
-                   '<p>Reply: %s</p></div>' % (esc(nid), esc(answer))
+    return "".join('<div class="reply" data-note="%s"><div class="viewer-note"%s>'
+                   '<p>Your note:</p><p class="note-text">%s</p></div>'
+                   '<p>Reply: %s</p></div>' % (esc(nid), "" if nid in step.get("notes", {}) else " hidden",
+                                              esc(step.get("notes", {}).get(nid, "")), esc(answer))
                    for nid, answer in step.get("replies", {}).items())
 
 
 def step_html(step):
     sid = esc(step["id"])
     title = "%d. %s" % (step["num"], esc(step["title"]))
-    if step["status"] == "done":
+    settled = step["status"] == "done" and step["kind"] == "decision" and "jury" in step
+    if step["status"] == "done" and not settled:
         result = step.get("result", "") if step["kind"] == "command" else step.get("answer", "")
         return '<div class="finished" data-step="%s" data-num="%d"><span>%s</span>: %s</div>' % (
             sid, step["num"], title, esc(result))
     head = '<details open class="step" data-step="%s" data-num="%d"><summary>%s<span class="ran" hidden> - Ran; output awaits review.</span></summary>' % (
         sid, step["num"], title)
+    if settled:
+        head = '<details class="finished" data-step="%s" data-num="%d"><summary>%s: %s</summary>' % (
+            sid, step["num"], title, esc(step["answer"]))
     if step["kind"] == "command":
         body = "".join('<p><strong>%s:</strong> %s</p>' % (label, esc(step[field]))
                        for field, label in (("where", "Where"), ("why", "Why"), ("success", "Success")))
@@ -410,9 +442,13 @@ def step_html(step):
         if step.get("built"):
             body += '<p><strong>Built:</strong></p><ul>' + ''.join('<li>%s</li>' % esc(text)
                     for text in step["built"]) + '</ul>'
-        body += '<p class="pick" aria-live="polite">No option picked.</p>'
-        body += '<div class="notes"></div>' + replies_html(step)
-        body += '<form><label>Note or question<textarea disabled></textarea></label><button disabled type="button">Send note</button></form>'
+        if not settled:
+            if "jury" in step and step.get("ruling"):
+                body += '<p>%s</p>' % esc(RULING_GUIDANCE)
+            body += '<p class="pick" aria-live="polite">No option picked.</p><div class="notes"></div>'
+        body += replies_html(step)
+        if not settled:
+            body += '<form><label>Note or question<textarea disabled></textarea></label><button disabled type="button">Send note</button></form>'
     return head + '<div class="step-body">' + body + '</div></details>'
 
 
@@ -450,6 +486,41 @@ def md_text(value):
     return re.sub(r"(?m)^([ \t]*)(-+|=+)([ \t]*)$", r"\1\\\2\3", text)
 
 
+def decision_md(step):
+    lines = []
+    if step.get("context"):
+        lines += [md_text(step["context"]), ""]
+    if "question" in step:
+        lines += ["Question sent to the jury:", ""] + fenced(step["question"])
+    if "jury" in step:
+        lines += jury_md(step)
+    else:
+        lines += ["Recommendation: " + md_text(step["recommendation"]), ""]
+        lines += ["- %s: %s" % (md_text(o["id"]), md_text(o["label"])) for o in step["options"]]
+    if step.get("ruling"):
+        if lines[-1] != "":
+            lines += [""]
+        lines += ["Ruling: " + md_text(step["ruling"]), ""]
+    if step.get("built"):
+        if lines[-1] != "":
+            lines += [""]
+        lines += ["Built:", ""] + ["- " + md_text(text) for text in step["built"]]
+    if step["status"] == "open":
+        if "jury" in step and step.get("ruling"):
+            guidance = ("Reply in chat with the step number and the ruled option to confirm it, "
+                        "another option to replace it, or a note.")
+        else:
+            guidance = "Reply in chat with the step number and your choice, note or question."
+        lines += ["", guidance, ""]
+    for nid, answer in step.get("replies", {}).items():
+        if lines and lines[-1] != "":
+            lines += [""]
+        if nid in step.get("notes", {}):
+            lines += ["Your note:", "", "> " + md_text(step["notes"][nid]).replace("\n", "\n> "), ""]
+        lines += ["Reply: " + md_text(answer), ""]
+    return lines
+
+
 def render_md(state):
     lines = ["# " + md_text(state["title"]), "", md_text(state["goal"]), "",
              "Now: " + md_text(state["now"]), "", "Updated: " + md_text(state["updated"]), "", "## Your turn", ""]
@@ -467,28 +538,7 @@ def render_md(state):
             lines += fenced(step["command"], "bash")
             lines += ["Reply in chat with the step number.", ""]
         else:
-            if step.get("context"):
-                lines += [md_text(step["context"]), ""]
-            if "question" in step:
-                lines += ["Question sent to the jury:", ""] + fenced(step["question"])
-            if "jury" in step:
-                lines += jury_md(step)
-            else:
-                lines += ["Recommendation: " + md_text(step["recommendation"]), ""]
-                lines += ["- %s: %s" % (md_text(o["id"]), md_text(o["label"])) for o in step["options"]]
-            if step.get("ruling"):
-                if lines[-1] != "":
-                    lines += [""]
-                lines += ["Ruling: " + md_text(step["ruling"]), ""]
-            if step.get("built"):
-                if lines[-1] != "":
-                    lines += [""]
-                lines += ["Built:", ""] + ["- " + md_text(text) for text in step["built"]]
-            lines += ["", "Reply in chat with the step number and your choice, note or question.", ""]
-            for nid, answer in step.get("replies", {}).items():
-                if nid in step.get("notes", {}):
-                    lines += ["> " + md_text(step["notes"][nid]).replace("\n", "\n> "), ""]
-                lines += ["Reply: " + md_text(answer), ""]
+            lines += decision_md(step)
     lines += ["## After that", ""]
     for item in state["after"]:
         lines += ["- Step %d: %s: %s" % (item["num"], md_text(item["owner"]), md_text(item["title"]))]
@@ -501,7 +551,13 @@ def render_md(state):
     lines += ["## Done so far", ""]
     for step in ordered_steps(state, "done"):
         result = step.get("result", "") if step["kind"] == "command" else step.get("answer", "")
-        lines += ["- %d. %s: %s" % (step["num"], md_text(step["title"]), md_text(result))]
+        title = "%d. %s: %s" % (step["num"], md_text(step["title"]), md_text(result))
+        if step["kind"] == "decision" and "jury" in step:
+            summary = "%d. %s: %s" % (step["num"], step["title"], result)
+            lines += ["<details>", "<summary>" + esc(summary) + "</summary>", ""]
+            lines += decision_md(step) + ["</details>", ""]
+        else:
+            lines += ["- " + title]
     lines += ["- " + md_text(text) for text in state["done"]]
     lines += ["", "## Side notes", ""] + ["- " + md_text(text) for text in state["side_notes"]]
     if state.get("appendix"):
@@ -735,6 +791,10 @@ def main():
         else:
             snapshot = Path(args.state).with_suffix(".numbers.json")
             numbers = step_numbers(state, load(snapshot) if snapshot.exists() else {})
+            completion = re.fullmatch(r"Work done; (\d+) rulings? open for optional review", state["now"])
+            if completion:
+                count = int(completion[1])
+                state["now"] = "Work done; %d %s open for optional review" % (count, "ruling" if count == 1 else "rulings")
             content = render_md(state) if args.md else render_html(state)
             Path(args.output).write_text(content, encoding="utf-8")
             snapshot.write_text(json.dumps(numbers, indent=2) + "\n", encoding="utf-8")

@@ -65,6 +65,8 @@ Convene the four-juror panel once, through the `jury` skill. Its question file a
 2. Does any earlier DECLINE or SIMPLIFY now look unsafe, given the accumulated changes?
 3. After those fixes, is the pull request ready?
 
+The capped final fix pass is a standing grant to apply the jury's result without a new delegation request.
+Follow `jury` for authority, recording, closure, page feedback and correction approval; keep this loop's cap and final verification.
 Convene it at the cap and nowhere else.
 
 ## 7. End of the lane
