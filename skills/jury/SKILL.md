@@ -86,7 +86,7 @@ Send cards with multiple decisions through handback-tracker's jury converter, wi
 Report each decision as a self-contained card for ruling or later review, in this order:
 
 1. **Heading**: the decision in one line. When one message walks through several decisions, number them: "Decision 5 of 12: ...".
-2. **Context**: one paragraph a reader with no memory of the session can follow: what the thing is, what changed, and which constraint forces the choice. Take it from the question file, define every name on first use, and cite pull requests and issues by number.
+2. **Context**: one paragraph a reader with no memory of the session can follow: what the thing is, what changed, and which constraint forces the choice. Take it from the question file, define every name on first use, and link every pull request and issue the card names, using a full URL or a Markdown link whose label says what it is.
 3. **Question**: the exact sent question text, on every card, after Context and before Options.
 4. **Options**: the lettered options, one line each. A juror's "new" pick joins the list under the next letter, marked with the juror who proposed it.
 5. **Jury**: one line per juror, in alphabetical order: its name, then its PICK and REASON lines copied word for word. Every juror keeps its line: a reply with no PICK line reads "no pick line", a truncated reply "truncated", a failed command "no reply, exit <code>" followed by the command and the last line of its error output. Then at most one agreement line, for a point every juror who replied makes in its own text, with the count: "All four keep the uninstall cleanup, so D is out."

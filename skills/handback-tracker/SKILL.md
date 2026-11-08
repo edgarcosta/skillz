@@ -37,6 +37,8 @@ The JSON fields are:
 
 - `title` (two to four words), `goal`, `now` (whose move and one next action), `updated`;
   `steps`, `after`, `sessions`, `done`, `side_notes` (lists); `url` once published.
+- With optional `repo` (`owner/name`) set, every `#N` in prose links to issue or pull request N of that repository.
+  Refer to steps as "step 3". URLs, `[label](url)` and `owner/name#N` link on every page.
 - Each step: stable `id` and positive integer `num`, `kind` (`command` or `decision`),
   `status` (`open` or `done`), `title`.
 - Open command: `where`, `why`, `success`, `command`; optional `time` when over a minute.

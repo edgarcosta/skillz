@@ -14,6 +14,15 @@ import sys
 import tempfile
 import unicodedata
 from pathlib import Path
+from urllib.parse import quote
+
+
+REPO = r"[A-Za-z0-9][A-Za-z0-9-]*/(?!\.{1,2}(?:#|$))[A-Za-z0-9_.][A-Za-z0-9_.-]*"
+LINK = re.compile(
+    r"\[(?P<label>[^\]\n]*)\]\((?P<target>(?:[^\s<>()]|\([^\s<>()]*\))+)\)"
+    r"|<(?P<autolink>https?://[^\s<>]+)>"
+    r"|(?P<url>https?://[^\s<>\"'\x60]+)"
+    r"|(?<![\w./#&=?%+-])(?:(?P<repo>" + REPO + r"))?#(?P<number>[0-9]+)(?![\w])")
 
 
 class Usage(Exception):
@@ -95,6 +104,8 @@ def validate(state, render=False):
     for field in ("steps", "after", "sessions", "done", "side_notes", "appendix", "groups"):
         if not isinstance(state.get(field, []), list) or (field not in state and field not in ("appendix", "groups")):
             raise Usage(field + " must be a list")
+    if "repo" in state and (not isinstance(state["repo"], str) or not re.fullmatch(REPO, state["repo"])):
+        raise Usage("repo must be owner/name")
     ids, numbers = set(), set()
     for item in state["steps"] + state["after"]:
         if not isinstance(item, dict):
@@ -238,6 +249,48 @@ def esc(value):
     return html.escape(str(value), quote=True)
 
 
+def linked_text(value, repo, markdown=False):
+    text = md_text if markdown else esc
+    value = str(value)
+    parts, end = [], 0
+    for match in LINK.finditer(value):
+        parts.append(text(value[end:match.start()]))
+        label = match["label"]
+        url = match["target"] or match["autolink"] or match["url"]
+        tail = ""
+        if match["url"]:
+            while True:
+                previous = url
+                url = url.rstrip(".,;:!?*]")
+                while url.endswith(")") and url.count(")") > url.count("("):
+                    url = url[:-1]
+                if url == previous:
+                    break
+            tail = match[0][len(url):]
+        if match["target"] and not url.startswith(("http://", "https://")):
+            reference = re.fullmatch(r"(?:(?P<repo>" + REPO + r"))?#(?P<number>[0-9]+)", url)
+            if not reference or not (reference["repo"] or repo):
+                parts.append(text(match[0]))
+                end = match.end()
+                continue
+            url = "https://github.com/%s/issues/%s" % (reference["repo"] or repo, reference["number"])
+        if not url:
+            target_repo = match["repo"] or repo
+            if not target_repo:
+                parts.append(text(match[0]))
+                end = match.end()
+                continue
+            url = "https://github.com/%s/issues/%s" % (target_repo, match["number"])
+        if label is None:
+            label = match["autolink"] or (url if match["url"] else match[0])
+        url = quote(url, safe="/:?#[]@!$&'*+,;=%-._~")
+        parts.append(("[%s](%s)" % (text(label), url) if markdown else
+                      '<a href="%s">%s</a>' % (esc(url), text(label))) + text(tail))
+        end = match.end()
+    parts.append(text(value[end:]))
+    return "".join(parts)
+
+
 def ordered_steps(state, status):
     return sorted((s for s in state["steps"] if s["status"] == status), key=lambda s: s["num"])
 
@@ -307,12 +360,13 @@ RULING_GUIDANCE = ("Pick the ruled option to confirm, another option to replace 
                    "then say check in the conversation that owns this page.")
 
 
-def jury_html(step):
+def jury_html(step, text):
     rows = jury_rows(step)
     body = '<div class="options">'
     for option in step["options"]:
-        caption = backing_text(option, rows, esc, lambda line: '<code>%s</code>' % esc(line))
-        label = "%s: %s" % (esc(option["id"]), esc(option["label"]))
+        caption = backing_text(option, rows, text, lambda line: '<code>%s</code>' % esc(line))
+        label_text = text if step["status"] == "done" else esc
+        label = "%s: %s" % (esc(option["id"]), label_text(option["label"]))
         body += '<div>' + (label if step["status"] == "done" else
             '<button type="button" disabled data-option="%s" aria-pressed="false">%s</button>' % (esc(option["id"]), label))
         if caption:
@@ -321,11 +375,11 @@ def jury_html(step):
     body += '</div>'
     if majority_caption(rows):
         body += '<p>%s</p>' % esc(majority_caption(rows))
-    if no_backing(rows, esc):
-        body += '<p>%s</p>' % no_backing(rows, esc)
+    if no_backing(rows, text):
+        body += '<p>%s</p>' % no_backing(rows, text)
     body += '<h4>Juror advice</h4>'
     for row, oid, conditional, outcome in rows:
-        body += '<div class="jury-line"><p>%s (%s)</p>' % (esc(row["juror"]), esc(row["model"]))
+        body += '<div class="jury-line"><p>%s (%s)</p>' % (text(row["juror"]), text(row["model"]))
         for field in ("pick", "reason", "status"):
             if field in row:
                 body += '<pre>\n%s</pre>' % esc(row[field])
@@ -333,9 +387,9 @@ def jury_html(step):
             body += '<p>%s</p>' % esc(outcome)
         body += '</div>'
     if step["jury"].get("agreement"):
-        body += '<p><strong>Agreement:</strong> %s</p>' % esc(step["jury"]["agreement"])
+        body += '<p><strong>Agreement:</strong> %s</p>' % text(step["jury"]["agreement"])
     if "recommendation" in step:
-        body += '<p><strong>Mine (no vote):</strong> %s</p>' % esc(step["recommendation"])
+        body += '<p><strong>Mine (no vote):</strong> %s</p>' % text(step["recommendation"])
     return body
 
 
@@ -372,107 +426,109 @@ def md_code(text):
     return delimiter + " " + text + " " + delimiter if text.startswith(("`", " ")) or text.endswith(("`", " ")) else delimiter + text + delimiter
 
 
-def jury_md(step):
+def jury_md(step, text):
     rows = jury_rows(step)
     lines = []
     for option in step["options"]:
-        caption = backing_text(option, rows, md_text, md_code)
-        lines.append("- %s: %s%s" % (md_text(option["id"]), md_text(option["label"]), "; " + caption if caption else ""))
+        caption = backing_text(option, rows, text, md_code)
+        lines.append("- %s: %s%s" % (text(option["id"]), text(option["label"]), "; " + caption if caption else ""))
     lines += [""]
     if majority_caption(rows):
         lines += [md_text(majority_caption(rows)), ""]
-    if no_backing(rows, md_text):
-        lines += [no_backing(rows, md_text), ""]
+    if no_backing(rows, text):
+        lines += [no_backing(rows, text), ""]
     lines += ["**Juror advice**", ""]
     for row, oid, conditional, outcome in rows:
-        lines += ["%s (%s)" % (md_text(row["juror"]), md_text(row["model"])), ""]
+        lines += ["%s (%s)" % (text(row["juror"]), text(row["model"])), ""]
         for field in ("pick", "reason", "status"):
             if field in row:
                 lines += fenced(row[field])
         if outcome:
-            lines += [md_text(outcome), ""]
+            lines += [text(outcome), ""]
     if step["jury"].get("agreement"):
-        lines += ["Agreement: " + md_text(step["jury"]["agreement"]), ""]
+        lines += ["Agreement: " + text(step["jury"]["agreement"]), ""]
     if "recommendation" in step:
-        lines += ["Mine (no vote): " + md_text(step["recommendation"]), ""]
+        lines += ["Mine (no vote): " + text(step["recommendation"]), ""]
     return lines
 
 
-def replies_html(step):
+def replies_html(step, text):
     return "".join('<div class="reply" data-note="%s"><div class="viewer-note"%s>'
-                   '<p>Your note:</p><p class="note-text">%s</p></div>'
+                   '<p>Your note:</p><p class="note-text" data-source="%s">%s</p></div>'
                    '<p>Reply: %s</p></div>' % (esc(nid), "" if nid in step.get("notes", {}) else " hidden",
-                                              esc(step.get("notes", {}).get(nid, "")), esc(answer))
+                                              esc(step.get("notes", {}).get(nid, "")),
+                                              text(step.get("notes", {}).get(nid, "")), text(answer))
                    for nid, answer in step.get("replies", {}).items())
 
 
-def step_html(step):
+def step_html(step, text):
     sid = esc(step["id"])
-    title = "%d. %s" % (step["num"], esc(step["title"]))
+    title = "%d. %s" % (step["num"], text(step["title"]))
     settled = step["status"] == "done" and step["kind"] == "decision" and "jury" in step
     if step["status"] == "done" and not settled:
         result = step.get("result", "") if step["kind"] == "command" else step.get("answer", "")
         return '<div class="finished" data-step="%s" data-num="%d"><span>%s</span>: %s</div>' % (
-            sid, step["num"], title, esc(result))
+            sid, step["num"], title, text(result))
     head = '<details open class="step" data-step="%s" data-num="%d"><summary>%s<span class="ran" hidden> - Ran; output awaits review.</span></summary>' % (
         sid, step["num"], title)
     if settled:
         head = '<details class="finished" data-step="%s" data-num="%d"><summary>%s: %s</summary>' % (
-            sid, step["num"], title, esc(step["answer"]))
+            sid, step["num"], title, text(step["answer"]))
     if step["kind"] == "command":
-        body = "".join('<p><strong>%s:</strong> %s</p>' % (label, esc(step[field]))
+        body = "".join('<p><strong>%s:</strong> %s</p>' % (label, text(step[field]))
                        for field, label in (("where", "Where"), ("why", "Why"), ("success", "Success")))
         if step.get("time"):
-            body += '<p><strong>Time:</strong> %s</p>' % esc(step["time"])
+            body += '<p><strong>Time:</strong> %s</p>' % text(step["time"])
         body += '<div class="command"><button type="button" class="copy">Copy command</button><pre>\n%s</pre></div>' % esc(step["command"])
         body += '<label class="tick" hidden><input type="checkbox" disabled data-cmd="%s"> I ran this</label>' % command_hash(step["command"])
     else:
-        body = '<p>%s</p>' % esc(step["context"]) if step.get("context") else ""
+        body = '<p>%s</p>' % text(step["context"]) if step.get("context") else ""
         if "question" in step:
             body += '<details class="appendix"><summary>Question sent to the jury</summary><pre>\n%s</pre></details>' % esc(step["question"])
         if "jury" in step:
-            body += jury_html(step)
+            body += jury_html(step, text)
         else:
-            body += '<p><strong>Recommendation:</strong> %s</p>' % esc(step["recommendation"])
+            body += '<p><strong>Recommendation:</strong> %s</p>' % text(step["recommendation"])
             body += '<div class="options">' + "".join(
                 '<button type="button" disabled data-option="%s" aria-pressed="false">%s</button>' % (esc(o["id"]), esc(o["label"]))
                 for o in step["options"]) + '</div>'
         if step.get("ruling"):
-            body += '<p><strong>Ruling:</strong> %s</p>' % esc(step["ruling"])
+            body += '<p><strong>Ruling:</strong> %s</p>' % text(step["ruling"])
         if step.get("built"):
-            body += '<p><strong>Built:</strong></p><ul>' + ''.join('<li>%s</li>' % esc(text)
-                    for text in step["built"]) + '</ul>'
+            body += '<p><strong>Built:</strong></p><ul>' + ''.join('<li>%s</li>' % text(value)
+                    for value in step["built"]) + '</ul>'
         if not settled:
             if "jury" in step and step.get("ruling"):
                 body += '<p>%s</p>' % esc(RULING_GUIDANCE)
             body += '<p class="pick" aria-live="polite">No option picked.</p><div class="notes"></div>'
-        body += replies_html(step)
+        body += replies_html(step, text)
         if not settled:
             body += '<form><label>Note or question<textarea disabled></textarea></label><button disabled type="button">Send note</button></form>'
     return head + '<div class="step-body">' + body + '</div></details>'
 
 
 def render_html(state):
+    text = lambda value: linked_text(value, state.get("repo"))
     after = "".join('<li value="%d" data-num="%d"%s><strong>%s:</strong> %s</li>' %
                     (item["num"], item["num"], ' data-step="%s"' % esc(item["id"]) if item.get("id") is not None else "",
-                     esc(item["owner"]), esc(item["title"])) for item in state["after"])
+                     text(item["owner"]), text(item["title"])) for item in state["after"])
     sessions = ""
     if len(state["sessions"]) > 1:
         sessions = '<section><h2>Sessions</h2><table><thead><tr><th>Session</th><th>Owns</th><th>State</th></tr></thead><tbody>'
         for row in state["sessions"]:
-            sessions += '<tr>' + "".join('<td>%s</td>' % esc(row[key]) for key in ("session", "owns", "state")) + '</tr>'
+            sessions += '<tr>' + "".join('<td>%s</td>' % text(row[key]) for key in ("session", "owns", "state")) + '</tr>'
         sessions += '</tbody></table></section>'
     values = {
-        "TITLE": esc(state["title"]), "GOAL": esc(state["goal"]),
-        "NOW": esc(state["now"]), "UPDATED": esc(state["updated"]),
-        "OPEN": "".join('<h3 data-num="%d">%s</h3>' % (num, esc(title)) if step is None else step_html(step)
+        "DOCUMENT_TITLE": esc(state["title"]), "TITLE": text(state["title"]), "GOAL": text(state["goal"]),
+        "NOW": text(state["now"]), "UPDATED": text(state["updated"]),
+        "OPEN": "".join('<h3 data-num="%d">%s</h3>' % (num, text(title)) if step is None else step_html(step, text)
                         for title, num, step in open_entries(state)),
         "AFTER": after, "SESSIONS": sessions,
-        "DONE": "".join(step_html(s) for s in ordered_steps(state, "done")) +
-                "".join('<p>%s</p>' % esc(text) for text in state["done"]),
-        "SIDE_NOTES": "".join('<li>%s</li>' % esc(text) for text in state["side_notes"]),
+        "DONE": "".join(step_html(s, text) for s in ordered_steps(state, "done")) +
+                "".join('<p>%s</p>' % text(value) for value in state["done"]),
+        "SIDE_NOTES": "".join('<li>%s</li>' % text(value) for value in state["side_notes"]),
         "APPENDIX": ('<section class="appendix"><h2>Appendix</h2>' + "".join(
-            '<details><summary>%s</summary><pre>\n%s</pre></details>' % (esc(item["title"]), esc(item["text"]))
+            '<details><summary>%s</summary><pre>\n%s</pre></details>' % (text(item["title"]), esc(item["text"]))
             for item in state["appendix"]) + '</section>') if state.get("appendix") else "",
     }
     template = (Path(__file__).resolve().parent.parent / "template.html").read_text(encoding="utf-8")
@@ -486,25 +542,25 @@ def md_text(value):
     return re.sub(r"(?m)^([ \t]*)(-+|=+)([ \t]*)$", r"\1\\\2\3", text)
 
 
-def decision_md(step):
+def decision_md(step, text):
     lines = []
     if step.get("context"):
-        lines += [md_text(step["context"]), ""]
+        lines += [text(step["context"]), ""]
     if "question" in step:
         lines += ["Question sent to the jury:", ""] + fenced(step["question"])
     if "jury" in step:
-        lines += jury_md(step)
+        lines += jury_md(step, text)
     else:
-        lines += ["Recommendation: " + md_text(step["recommendation"]), ""]
-        lines += ["- %s: %s" % (md_text(o["id"]), md_text(o["label"])) for o in step["options"]]
+        lines += ["Recommendation: " + text(step["recommendation"]), ""]
+        lines += ["- %s: %s" % (text(o["id"]), text(o["label"])) for o in step["options"]]
     if step.get("ruling"):
         if lines[-1] != "":
             lines += [""]
-        lines += ["Ruling: " + md_text(step["ruling"]), ""]
+        lines += ["Ruling: " + text(step["ruling"]), ""]
     if step.get("built"):
         if lines[-1] != "":
             lines += [""]
-        lines += ["Built:", ""] + ["- " + md_text(text) for text in step["built"]]
+        lines += ["Built:", ""] + ["- " + text(value) for value in step["built"]]
     if step["status"] == "open":
         if "jury" in step and step.get("ruling"):
             guidance = ("Reply in chat with the step number and the ruled option to confirm it, "
@@ -516,54 +572,55 @@ def decision_md(step):
         if lines and lines[-1] != "":
             lines += [""]
         if nid in step.get("notes", {}):
-            lines += ["Your note:", "", "> " + md_text(step["notes"][nid]).replace("\n", "\n> "), ""]
-        lines += ["Reply: " + md_text(answer), ""]
+            lines += ["Your note:", "", "> " + text(step["notes"][nid]).replace("\n", "\n> "), ""]
+        lines += ["Reply: " + text(answer), ""]
     return lines
 
 
 def render_md(state):
-    lines = ["# " + md_text(state["title"]), "", md_text(state["goal"]), "",
-             "Now: " + md_text(state["now"]), "", "Updated: " + md_text(state["updated"]), "", "## Your turn", ""]
+    text = lambda value: linked_text(value, state.get("repo"), markdown=True)
+    lines = ["# " + text(state["title"]), "", text(state["goal"]), "",
+             "Now: " + text(state["now"]), "", "Updated: " + text(state["updated"]), "", "## Your turn", ""]
     entries = list(open_entries(state))
     heading = "####" if any(step is None for title, num, step in entries) else "###"
     for title, num, step in entries:
         if step is None:
-            lines += ["### " + md_text(title), ""]
+            lines += ["### " + text(title), ""]
             continue
-        lines += ["%s %d. %s" % (heading, step["num"], md_text(step["title"])), ""]
+        lines += ["%s %d. %s" % (heading, step["num"], text(step["title"])), ""]
         if step["kind"] == "command":
             for field, label in (("where", "Where"), ("why", "Why"), ("success", "Success"), ("time", "Time")):
                 if step.get(field):
-                    lines += [label + ": " + md_text(step[field]), ""]
+                    lines += [label + ": " + text(step[field]), ""]
             lines += fenced(step["command"], "bash")
             lines += ["Reply in chat with the step number.", ""]
         else:
-            lines += decision_md(step)
+            lines += decision_md(step, text)
     lines += ["## After that", ""]
     for item in state["after"]:
-        lines += ["- Step %d: %s: %s" % (item["num"], md_text(item["owner"]), md_text(item["title"]))]
+        lines += ["- Step %d: %s: %s" % (item["num"], text(item["owner"]), text(item["title"]))]
     lines += [""]
     if len(state["sessions"]) > 1:
         lines += ["## Sessions", "", "| Session | Owns | State |", "| --- | --- | --- |"]
         for row in state["sessions"]:
-            lines += ["| " + " | ".join(md_text(row[k]).replace("\n", " ") for k in ("session", "owns", "state")) + " |"]
+            lines += ["| " + " | ".join(text(row[k]).replace("\n", " ") for k in ("session", "owns", "state")) + " |"]
         lines += [""]
     lines += ["## Done so far", ""]
     for step in ordered_steps(state, "done"):
         result = step.get("result", "") if step["kind"] == "command" else step.get("answer", "")
-        title = "%d. %s: %s" % (step["num"], md_text(step["title"]), md_text(result))
+        title = "%d. %s: %s" % (step["num"], text(step["title"]), text(result))
         if step["kind"] == "decision" and "jury" in step:
             summary = "%d. %s: %s" % (step["num"], step["title"], result)
-            lines += ["<details>", "<summary>" + esc(summary) + "</summary>", ""]
-            lines += decision_md(step) + ["</details>", ""]
+            lines += ["<details>", "<summary>" + linked_text(summary, state.get("repo")) + "</summary>", ""]
+            lines += decision_md(step, text) + ["</details>", ""]
         else:
             lines += ["- " + title]
-    lines += ["- " + md_text(text) for text in state["done"]]
-    lines += ["", "## Side notes", ""] + ["- " + md_text(text) for text in state["side_notes"]]
+    lines += ["- " + text(value) for value in state["done"]]
+    lines += ["", "## Side notes", ""] + ["- " + text(value) for value in state["side_notes"]]
     if state.get("appendix"):
         lines += ["", "## Appendix", ""]
         for item in state["appendix"]:
-            lines += ["### " + md_text(item["title"]), ""] + fenced(item["text"])
+            lines += ["### " + text(item["title"]), ""] + fenced(item["text"])
     return "\n".join(lines) + "\n"
 
 
