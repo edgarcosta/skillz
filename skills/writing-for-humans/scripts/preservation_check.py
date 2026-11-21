@@ -43,8 +43,11 @@ FORMULA_RE = re.compile(
 )
 
 
+# A note may hold a closing bracket inside one level of braces, as in
+# \cite[case {$[0,1]$}]{key}.
 def key_re(names, args=1):
-    return re.compile(r"(?<!\\)\\(?:%s)\*?(?:\s*\[[^\]]*\])*" % names + r"\s*\{([^{}]*)\}" * args)
+    return re.compile(r"(?<!\\)\\(?:%s)\*?(?:\s*\[(?:\{[^{}\]]*\][^{}]*\}|[^\]])*\])*" % names
+                      + r"\s*\{([^{}]*)\}" * args)
 
 
 # (category, command, whether the braces may hold a comma-separated list)
