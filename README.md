@@ -40,6 +40,12 @@ Or copy folders from `skills/` into `~/.claude/skills/` or `~/.agents/skills/`.
 Issues and pull requests are welcome. This repository is generated from my dotfiles, so I
 apply an accepted change there and it comes back here with the next sync.
 
+## Credits
+
+Parts of `writing-for-humans` are adapted, with permission, from Samuel Grushevsky's
+WriteBetter skill: the rules on claim strength and on using the reader's words,
+`mathematics.md` and `scripts/preservation_check.py`.
+
 ## License
 
 MIT

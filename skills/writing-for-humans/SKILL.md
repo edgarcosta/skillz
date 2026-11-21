@@ -7,7 +7,7 @@ description: Use when drafting or revising something the user will send, post, f
 
 This shapes text another person will read on their own, without you there to explain it. That reader is busy, does not know what you were doing, and reads the first line and maybe the last. Work out what they need to understand, decide, or do, and write for that.
 
-Short is not the goal. Cut the story of how you got here; keep every fact the reader needs to act, including the fix, the condition it depends on, and any real uncertainty. Use only facts you were given or verified. A path, a line number, an error string, or a test result you did not see is a guess: label it as one or leave it out.
+Short is not the goal. Cut the story of how you got here; keep every fact the reader needs to act, including the fix, the condition it depends on, and any real uncertainty. Under a length limit, cut background and the example before the one clause that says why the fix or the method works. Use only facts you were given or verified. When you shorten or reword a claim, keep it exactly as strong as its source: every condition and its scope, "a" or "the", "should fix" or "fixes". Add "only", "precisely" or "therefore" only where the source supports them. A path, a line number, an error string, or a test result you did not see is a guess: label it as one or leave it out.
 
 ## 1. The point goes in the first line
 
@@ -29,6 +29,11 @@ Use the most specific verified details you have: names, dates, quantities, comma
 
 Weak: "Fails sometimes under load."
 Better: "Fails about 1 run in 5 at worker.py:212 with RuntimeError: dictionary changed size during iteration. Reproduced with pytest -n 8 tests/test_pool.py."
+
+Use the words your reader already uses. A name you coined while working (an option letter, a phase name, a nickname for a bug) becomes a description of the thing. Introduce a new name or abbreviation only when the text refers to it repeatedly, and define it where it first appears.
+
+Weak: "With the T2 bound the sweep finishes."
+Better: "With the sharper conductor bound, the search over all genus 2 curves finishes in a day."
 
 ## 4. For a failure: the cost first, then what you know
 
@@ -67,3 +72,5 @@ These rules shape the artifact you will post. The chat reply that hands it over 
 Repository instructions (AGENTS.md, CLAUDE.md) decide structure and formatting: length limits, one bullet per file, ASCII only, no trailers. They win over anything here. This skill sets no limit on list length.
 
 For the layout of a full pull request review or an issue triage reply, read reviewing.md next to this file. When another skill produced the findings (for example audit-changes), that skill owns what is true; this one only orders and words it.
+
+For mathematical text (a proof, a paper or its abstract, or a message, pull request or docstring that explains an argument or a computation), read mathematics.md next to this file.
