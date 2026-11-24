@@ -69,6 +69,8 @@ It lists sentences over 25 words, hedges, filler words, idioms, preamble and clo
 
 These rules shape the artifact you will post. The chat reply that hands it over keeps its usual style; if the person reading your reply is the one deciding, the reply is the artifact.
 
+When the words are the user's own, a draft they wrote or something they said in chat, keep their voice: their line breaks, person, connectives, and punctuation. Change a sentence of theirs only when it is wrong or a reader would misread it, even when the checker flags it.
+
 Repository instructions (AGENTS.md, CLAUDE.md) decide structure and formatting: length limits, one bullet per file, ASCII only, no trailers. They win over anything here. This skill sets no limit on list length.
 
 For the layout of a full pull request review or an issue triage reply, read reviewing.md next to this file. When another skill produced the findings (for example audit-changes), that skill owns what is true; this one only orders and words it.
