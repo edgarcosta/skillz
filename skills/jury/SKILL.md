@@ -32,7 +32,7 @@ It states:
 - the options as they stand, lettered A, B, C;
 - what a good answer must cover.
 
-Carry no recommendation or claim of prior approval in the question. Give each option its strongest case in parallel form at similar length. State relevant constraints as facts, with their evidence.
+Carry no recommendation or claim of prior approval in the question. Give each option its strongest case in parallel form at similar length. State relevant constraints as facts, with their evidence. For a brainstorm jury (research directions or open questions), provide only facts and the open question with no seeded candidate options, heuristics, papers, or example answers; ask each juror for ranked proposals in its own words.
 
 Define every symbol, name and abbreviation on first use. Ask for a bounded answer that opens with two lines,
 
@@ -88,10 +88,9 @@ Report each decision as a self-contained card for ruling or later review, in thi
 1. **Heading**: the decision in one line. When one message walks through several decisions, number them: "Decision 5 of 12: ...".
 2. **Context**: one paragraph a reader with no memory of the session can follow: what the thing is, what changed, and which constraint forces the choice. Take it from the question file, define every name on first use, and link every pull request and issue the card names, using a full URL or a Markdown link whose label says what it is.
 3. **Question**: the exact sent question text, on every card, after Context and before Options.
-4. **Options**: the lettered options, one line each. A juror's "new" pick joins the list under the next letter, marked with the juror who proposed it.
+4. **Options**: the lettered options, one line each, with their endorsers beside them. Follow handback-tracker for support recovery, conditional marks, recommendation labels and distinct endorsement formatting. A juror's "new" pick joins the list under the next letter, marked with the juror who proposed it. Show any recommendation text beyond the option letter once below the options.
 5. **Jury**: one line per juror, in alphabetical order: its name, then its PICK and REASON lines copied word for word. Every juror keeps its line: a reply with no PICK line reads "no pick line", a truncated reply "truncated", a failed command "no reply, exit <code>" followed by the command and the last line of its error output. Then at most one agreement line, for a point every juror who replied makes in its own text, with the count: "All four keep the uninstall cleanup, so D is out."
-6. **Mine**: optionally your own recommendation, last, as "Mine (no vote): ...".
-7. **Full replies**: the complete replies in an appendix or disclosure. Keep the run directory as the working copy.
+6. **Full replies**: the complete replies in an appendix or disclosure. Keep the run directory as the working copy.
 
 The juror lines preserve the evidence for the ruling and its later review. A missing PICK line stays missing: a pick inferred from the body is your reading. A question file with several labels gets one Options and Jury block per label.
 
