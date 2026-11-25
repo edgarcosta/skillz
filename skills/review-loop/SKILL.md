@@ -51,7 +51,7 @@ A mutation gap is medium only when the pull request body or the test itself clai
 
 **Normal stop.** The loop ends after the first round in which no confirmed finding of medium severity or above survives triage as FIX. Decide that with the script rather than by hand. After triage, write the round's post-triage view to `<run-dir>/validations.json` as a list of objects with the keys `candidate`, `lane`, `disposition` and `severity`, recording a FIX as `confirm` at the finding's severity and a DECLINE or a SIMPLIFY as `reject`, then run `review-run should-stop <run-dir> --min-severity medium`. The validators' own file stays in the audit's run directory and is not edited.
 
-Read that command's exit status, not the word it prints: `should-stop` is named for audit-changes' fast-fail, where a confirmed finding stops the fan-out, so its words read backwards here. Exit 1, printed as `continue`, means nothing medium or above survived, so this round's fix pass is the last one and the loop ends. Exit 0, printed as `stop`, means one did, so run another round. Exit 2 means a bad or missing file: stop and report it.
+Read that command's exit status, not the word it prints: `should-stop` is named for audit-changes' fast-fail, where a confirmed finding stops the fan-out, so its words read backwards here. Exit 1, printed as `continue`, means nothing medium or above survived, so this round's fix pass is the last one and the loop ends. Exit 0, printed as `stop`, means one did, so run another round. Exit 2 means a bad or missing file: stop and report it. An exit 1 round whose audit reports a compliance check that did not run (audit-changes step 6) still ends the loop, but without a clean audit, which is not a normal stop.
 
 **Cap.** At most 3 rounds. When round 3 still leaves a medium-or-higher FIX open, convene the jury once, apply one fix pass directed by its answers with focused verification, and end the loop. Never run a fourth round, and never present a capped loop as a converged one: say that it hit the cap and what remains open.
 
@@ -71,7 +71,7 @@ Convene it at the cap and nowhere else.
 
 ## 7. End of the lane
 
-Hand the maintainer one list: every remaining low finding, and every DECLINE with its one-line reason. That list is where a misjudged severity gets caught, so it is complete: no entry is summarized away and no count stands in for the entries. Report alongside it how many rounds ran, whether the loop stopped normally or at the cap, what the fix passes changed, the run directory and its `ledger.tsv`, and every coverage gap the rounds' audits recorded.
+Hand the maintainer one list: every remaining low finding, and every DECLINE with its one-line reason. That list is where a misjudged severity gets caught, so it is complete: no entry is summarized away and no count stands in for the entries. Report alongside it how many rounds ran, whether the loop stopped normally, at the cap, or without a clean audit, what the fix passes changed, the run directory and its `ledger.tsv`, and every coverage gap the rounds' audits recorded.
 
 ## Failure handling
 
