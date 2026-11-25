@@ -44,7 +44,8 @@ button { font: inherit; color: var(--accent); background: var(--surface); border
 button:disabled { opacity: .65; cursor: default; }
 button[aria-pressed="true"] { background: var(--selected); border-color: var(--accent); }
 button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.options { display: flex; flex-wrap: wrap; gap: 8px; }
+.options { display: flex; flex-direction: column; gap: 8px; }
+.backing { color: var(--accent); font-weight: 650; }
 .tick { display: block; margin-top: 16px; }
 input { accent-color: var(--accent); }
 textarea { display: block; width: 100%; min-height: 96px; background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 5px; font: inherit; padding: 10px; margin: 8px 0; }
@@ -75,13 +76,15 @@ const openSteps = document.getElementById("open-steps");
 const doneSteps = document.getElementById("done-steps");
 const statusLine = document.getElementById("db-status");
 const cards = Array.from(document.querySelectorAll("details.step"));
+const openOrder = Array.from(openSteps.children);
 const pending = new Set();
 let readOnly = false;
 
 function place(card, done) {
   const target = done ? doneSteps : openSteps;
   if (card.parentNode !== target) {
-    const next = Array.from(target.children).find(el => Number(el.dataset.num) > Number(card.dataset.num));
+    const next = done ? Array.from(target.children).find(el => Number(el.dataset.num) > Number(card.dataset.num))
+                      : openOrder.slice(openOrder.indexOf(card) + 1).find(el => el.parentNode === openSteps);
     target.insertBefore(card, next || (done ? Array.from(target.children).find(el => !el.dataset.num) : null));
     card.open = !done;
   }

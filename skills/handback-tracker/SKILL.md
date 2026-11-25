@@ -40,7 +40,8 @@ The JSON fields are:
 - With optional `repo` (`owner/name`) set, every `#N` in prose links to issue or pull request N of that repository.
   Refer to steps as "step 3". URLs, `[label](url)` and `owner/name#N` link on every page.
 - Each step: stable `id` and positive integer `num`, `kind` (`command` or `decision`),
-  `status` (`open` or `done`), `title`.
+  `status` (`open` or `done`), `title`. Optional `priority`, a positive integer with 1 most important,
+  lists open steps by priority, then `num`, with unprioritized steps last; numbers do not change.
 - Open command: `where`, `why`, `success`, `command`; optional `time` when over a minute.
   Finished command: `result`.
 - Open decision: `recommendation`, with the alternative in one sentence;
@@ -70,15 +71,22 @@ The JSON fields are:
 - Optional `appendix`: objects with nonempty `title` and source `text`, shown after Side notes.
   HTML keeps each source in a closed disclosure; Markdown uses text fences.
 - Optional `groups`: objects with nonempty `title` and nonempty `steps` lists of step ids.
-  Members are adjacent in numeric order, including done steps, and occur in only one group.
+  Open members are adjacent in the open-step order, and members occur in only one group.
   Only groups with open members have headings; other open runs read Other steps.
 - `after`: objects with `num`, `owner` (`You`, `Me`, `You, maybe`), `title`, and optional
   `id` to preserve the number on promotion to a step. Commands wait until their inputs exist.
 - `sessions`: objects with `session`, `owns`, `state`; shown when there is more than one.
   `done` and `side_notes`: text lists.
 
-Ordinary decisions put the recommendation first; jury decisions put Mine after the juror lines,
-with one decision step per label.
+Put endorsements beside each option, separated from its label by " -- ".
+Use jurors from derived `support`; recover missing or unmatched entries from complete PICK/REASON
+pairs through the converter's interpretation. Use that interpretation for conditional marks too.
+Mark conditional picks "if ...", with their conditions on hover or in a suffix.
+Use "panel majority" when the recommendation starts with "Panel majority:".
+Use "Mine" only when it starts with the session's own "Mine (no vote):"; otherwise use "recommended".
+Unendorsed options have no marker. Make endorsements visually distinct in both formats.
+Show any recommendation text beyond the option letter once below the options, then the full juror
+PICK/REASON lines as evidence. Keep one decision step per label.
 
 Run these for the command contract and argument help:
 
